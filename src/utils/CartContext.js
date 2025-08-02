@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 const CartContext = createContext();
 
@@ -27,7 +27,7 @@ export const CartProvider = ({ children }) => {
   }, [cartItems]);
   
   // Add item to cart
-  const addToCart = (product) => {
+  const addToCart = (product, quantity = 1) => {
     setCartItems(prevItems => {
       // Check if item already exists in cart
       const existingItemIndex = prevItems.findIndex(item => item.id === product.id);
@@ -37,14 +37,14 @@ export const CartProvider = ({ children }) => {
         const updatedItems = [...prevItems];
         updatedItems[existingItemIndex] = {
           ...updatedItems[existingItemIndex],
-          quantity: updatedItems[existingItemIndex].quantity + 1
+          quantity: updatedItems[existingItemIndex].quantity + quantity
         };
-        toast.success(`Added another ${product.name} to cart`);
+        toast.success(`Added ${quantity > 1 ? quantity + ' ' : ''}${product.name} to cart`);
         return updatedItems;
       } else {
         // Item doesn't exist, add new item
-        toast.success(`${product.name} added to cart`);
-        return [...prevItems, { ...product, quantity: 1 }];
+        toast.success(`${quantity > 1 ? quantity + ' ' : ''}${product.name} added to cart`);
+        return [...prevItems, { ...product, quantity }];
       }
     });
   };
@@ -86,12 +86,14 @@ export const CartProvider = ({ children }) => {
   };
   
   const value = {
-    cartItems,
+    cart: cartItems,
+    cartItems, // Keep for backward compatibility
     addToCart,
     removeFromCart,
     updateQuantity,
     clearCart,
-    getTotalPrice,
+    totalPrice: getTotalPrice(),
+    getTotalPrice, // Keep for backward compatibility
     getTotalItems
   };
   

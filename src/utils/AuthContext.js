@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
@@ -7,11 +7,14 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [pendingUser, setPendingUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Load user from localStorage on initial render
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
+    const savedPendingUser = sessionStorage.getItem('pendingAuth');
+    
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
@@ -20,6 +23,22 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('user');
       }
     }
+    
+    if (savedPendingUser) {
+      try {
+        const pending = JSON.parse(savedPendingUser);
+        // Check if not expired (10 minutes)
+        if (Date.now() - pending.timestamp < 10 * 60 * 1000) {
+          setPendingUser(pending);
+        } else {
+          sessionStorage.removeItem('pendingAuth');
+        }
+      } catch (error) {
+        console.error('Error parsing pending user data:', error);
+        sessionStorage.removeItem('pendingAuth');
+      }
+    }
+    
     setIsLoading(false);
   }, []);
   
@@ -33,37 +52,23 @@ export const AuthProvider = ({ children }) => {
   }, [user]);
   
   // Simulate login process
-  const login = async (email) => {
+  const login = (email, verificationCode, additionalData = {}) => {
     // In a real app, this would be an API call
-    setIsLoading(true);
+    const pendingAuthData = {
+      email,
+      verificationCode,
+      timestamp: Date.now(),
+      ...additionalData
+    };
     
-    try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Generate a random verification code
-      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-      
-      // Store email and code in sessionStorage for verification step
-      sessionStorage.setItem('pendingAuth', JSON.stringify({
-        email,
-        verificationCode,
-        timestamp: Date.now()
-      }));
-      
-      setIsLoading(false);
-      toast.success(`Verification code sent to ${email}`);
-      return { success: true, verificationCode };
-    } catch (error) {
-      setIsLoading(false);
-      toast.error('Login failed. Please try again.');
-      return { success: false, error: error.message };
-    }
+    // Store email and code in sessionStorage for verification step
+    sessionStorage.setItem('pendingAuth', JSON.stringify(pendingAuthData));
+    setPendingUser(pendingAuthData);
   };
   
   // Verify OTP code
   const verifyCode = (code) => {
-    const pendingAuth = JSON.parse(sessionStorage.getItem('pendingAuth'));
+    const pendingAuth = pendingUser || JSON.parse(sessionStorage.getItem('pendingAuth') || 'null');
     
     if (!pendingAuth) {
       toast.error('No pending verification found. Please try logging in again.');
@@ -76,6 +81,7 @@ export const AuthProvider = ({ children }) => {
     if (isExpired) {
       toast.error('Verification code has expired. Please try logging in again.');
       sessionStorage.removeItem('pendingAuth');
+      setPendingUser(null);
       return false;
     }
     
@@ -83,13 +89,15 @@ export const AuthProvider = ({ children }) => {
       // Set the user
       const newUser = {
         email: pendingAuth.email,
-        name: pendingAuth.email.split('@')[0], // Simple name from email
+        name: pendingAuth.name || pendingAuth.email.split('@')[0], // Use provided name or extract from email
+        phone: pendingAuth.phone || '',
         isVerified: true,
         loginTime: Date.now()
       };
       
       setUser(newUser);
       sessionStorage.removeItem('pendingAuth');
+      setPendingUser(null);
       toast.success('Login successful!');
       return true;
     } else {
@@ -98,18 +106,37 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
+  // Resend verification code
+  const resendCode = (newVerificationCode) => {
+    if (!pendingUser) return false;
+    
+    const updatedPendingUser = {
+      ...pendingUser,
+      verificationCode: newVerificationCode,
+      timestamp: Date.now()
+    };
+    
+    sessionStorage.setItem('pendingAuth', JSON.stringify(updatedPendingUser));
+    setPendingUser(updatedPendingUser);
+    return true;
+  };
+  
   // Logout
   const logout = () => {
     setUser(null);
+    setPendingUser(null);
+    sessionStorage.removeItem('pendingAuth');
     toast.success('Logged out successfully');
   };
   
   const value = {
     user,
+    pendingUser,
     isLoading,
     isAuthenticated: !!user,
     login,
     verifyCode,
+    resendCode,
     logout
   };
   
